@@ -398,8 +398,8 @@ def introspect_(name=None, **kwargs):
                'vrf': 0,
                'tenant': 1,
                #  'vlan': ${_vlan},
-               'status': 1,
-               'dns_name': '$_hostname',
+               'status': 'active',
+               'dns_name': '',
                'is_pool': true,
                'description': '',
                'custom_fields': {}
@@ -517,7 +517,8 @@ def introspect_(name=None, **kwargs):
         else:
             asset_tag = __grains__.get('asset_tag')
             serial = __salt__['grains.get']('motherboard:serialnumber')
-
+        # TODO: fix, 'referenced before assignment'
+        primary_ip6=None
         if 'lldp.chassis' in __salt__:
             for ip in __salt__['lldp.chassis']().get('mgmt-ip', []):
                 for ipm in introspect_('ip-addresses'):
@@ -549,7 +550,7 @@ def introspect_(name=None, **kwargs):
             "position": None,
             "face": None,
             "parent_device": None,
-            "status": 1,
+            "status": "active",
             "primary_ip4": primary_ip4,
             "primary_ip6": primary_ip6,
             "tenant": None,
@@ -596,7 +597,7 @@ def introspect_(name=None, **kwargs):
             "name": vm_name,
             "vcpus": vcpus,
             "memory": memory,
-            "status": 1,
+            "status": "active",
             "site": _has_dict(introspect_('site'), _name),
             "cluster": _has_dict(introspect_('cluster'), _name),
             "role": _has_dict(introspect_('role'), _name),
@@ -612,7 +613,7 @@ def introspect_(name=None, **kwargs):
             "config_context": None
         }
 
-    if name in ('ip-addresses', 'ip-addresses4', 'ip-addresses6'):
+    if name in ('ip-addresses', 'ip-addresses4', 'ip-addresses6','ips'):
         if _is_virtual().get('virtual') == 'physical':
             device_vm = {'device': _system_name()}
         else:
@@ -642,13 +643,17 @@ def introspect_(name=None, **kwargs):
                     family = 6
                 else:
                     continue
+                if iface.get('up'):
+                    up='active'
+                else:
+                    up=None
                 _ips.append({
                     'id': _has_dict(nb_ips.get(ip_cidr), 'id'),
                     'family': family,
                     'address': ip_cidr,
                     'vrf': None,
                     'tenant': None,
-                    'status': iface.get('up'),
+                    'status': up,
                     'role': None,
                     'interface': minion_iface.get(iface_name, {}).get('id'),
                     'nat_inside': None,
@@ -677,7 +682,7 @@ def introspect_(name=None, **kwargs):
                 "is_pool": True,
                 "prefix": subnet,
                 "description": "",
-                "status": 1,
+                "status": { "value":"active" },
                 "vrf": None,
                 # "site": None,
                 # "tenant": None,
@@ -717,6 +722,10 @@ def introspect_(name=None, **kwargs):
                     nic_type = 'virtual'
             #  elif 'Wireless LAN' in iname:
                 #  nic_type=''
+            if iface.get('up'):
+                up='active'
+            else:
+                up=None
             if re.search(vlanid, iname):
                 t_vlans = [{'vid': iname.split('.')[-1]}]
                 nic_type = 'virtual'
@@ -1025,16 +1034,16 @@ def ipaddress_add(address=None, introspect=False, **kwargs):
     """
     Adds ip-address to netbox
     Arguments required, unless introspect is True
-    address: str, ip-address with with mask
+    address: str, ip-address with mask
     interface: int, id of parent interface
-    enabled: bool
+    enabled: str, 'active'
     id: int, None
     device: device name
     family: int, 4 or 6
     vrf: None,
     tenant: None,
     status: 1,
-    role: int, None
+    role: one of: loopback, secondary, anycast, vip, vrrp, hsrp, glbp, carp
     nat_inside: int, None
     nat_outside: int, None
     dns_name: str, None
@@ -1050,6 +1059,7 @@ def ipaddress_add(address=None, introspect=False, **kwargs):
     """
 
     kwargs.setdefault('address', address)
+    kwargs.setdefault('status', 'active')
     kwargs = _clean_kwargs(kwargs)
     method = kwargs.pop('method', 'POST')
     if introspect:
@@ -1298,7 +1308,7 @@ def vm_add(name=None, cluster=None, introspect=False, **kwargs):
         cluster: virtualization clusters name
     role: string
     site: site name
-    status: defaults to `1` for `Active`
+    status: defaults to `1`
     tenant:
     platform: string
     vcpus: nr of cpus
@@ -1314,7 +1324,7 @@ def vm_add(name=None, cluster=None, introspect=False, **kwargs):
     kwargs.setdefault('name', name)
     if isinstance(name, six.string_types):
         kwargs.setdefault('slug', _slugify(name))
-    kwargs.setdefault('status', True)
+    kwargs.setdefault('status', 1)
     kwargs.setdefault('cluster', cluster)
     kwargs = _clean_kwargs(kwargs)
     if introspect:
@@ -1357,7 +1367,7 @@ def device_add(name=None, introspect=False, **kwargs):
     display_name:
     serial:
     asset_tag:
-    status: int defaults to 1 for Active
+    status: 1
     tenant:
     rack:
     cluster: cluster name, if device has virtual-machines
@@ -1372,7 +1382,7 @@ def device_add(name=None, introspect=False, **kwargs):
     if isinstance(name, six.string_types):
         kwargs.setdefault('name', name)
         kwargs.setdefault('slug', _slugify(kwargs.get('name')))
-    kwargs.setdefault('status', 1)
+    kwargs.setdefault('status', "active")
     kwargs = _clean_kwargs(kwargs)
     if introspect:
         kwargs = _left_join(introspect_('device'), kwargs)
@@ -1458,3 +1468,4 @@ __func_alias__ = {
     'introspect_': 'introspect',
     'method_': 'method'
 }
+
